@@ -1,28 +1,16 @@
 #include <uWS/uWS.h>
 #include <iostream>
+#include <math.h>
 #include "json.hpp"
 #include "PID.h"
 #include "vehicle.h"
-#include <limits>
-#include <math.h>
+#include "twiddle.h"
 
 // for convenience
 using json = nlohmann::json;
 
 // TWIDDLE
 double best_err = std::numeric_limits<double>::max();
-
-const int skip = 100;
-const int n = 500;
-int it = 0;
-int cur_coef = 0;
-double cur_err = 0;
-double tol = 0.0001;
-bool is_second_pass = false;
-
-double p[3] = { 0.644128, 0.000729, 2.893 };
-double dp[3] = { 0.1, 0.001, 1.0 };
-
 
 // For converting back and forth between radians and degrees.
 constexpr double pi() { return M_PI; }
@@ -46,110 +34,36 @@ std::string hasData(std::string s) {
 }
 
 // Restarts the simulator through the web socket protocol
+bool skip = false;
 void reset(uWS::WebSocket<uWS::SERVER>& ws) {
   std::string reset_msg = "42[\"reset\",{}]";
   ws.send(reset_msg.data(), reset_msg.length(), uWS::OpCode::TEXT);
+  skip = true;
 }
 
-// variable used to set whether or not to optimize the pid.
-bool should_tune = false;
-
-void twiddle_init(PID& pid) {
-  it = 0;
-  cur_err = 0;
-  is_second_pass = false;
-  pid.Init(p[0], p[1], p[2]);
-
-  std::cout << "PID Initialized: ( "
-            << p[0] << ", "
-            << p[1] << ", "
-            << p[2] << " )\t"
-            << cur_coef << "\n";
-}
-
-void twiddle(PID& pid, double cte, std::function<void()> reset) {
-  if (++it >= n+skip) {
-    double err = cur_err / n;
-
-    // handle first pass
-    if (best_err == std::numeric_limits<double>::max()) {
-      best_err = err;
-      p[cur_coef] += dp[cur_coef];
-      twiddle_init(pid);
-      std::cout << "FIRST\t" << err << "/" << best_err << "\n";
-    }
-    // found error is < best_err
-    else if (err < best_err) {
-      best_err = err;
-      dp[cur_coef] *= 1.1;
-      
-      if (++cur_coef >= 3) {
-        cur_coef = 0;
-      }
-
-      if (cur_coef == 0 && dp[0]+dp[1]+dp[2] < tol) {
-        should_tune = false;
-        std::cout << "PID Coefficients Found: ("
-                  << p[0] << ","
-                  << p[1] << ","
-                  << p[2] << ")\n";
-        return;
-      }
-      else {
-        p[cur_coef] += dp[cur_coef];
-        twiddle_init(pid);
-        std::cout << "BEST\t" << err << "/" << best_err << "\n";
-      }
-    }
-    // err > best_err and not second pass, set p and re-run
-    else if (!is_second_pass) {
-      p[cur_coef] -= 2 * dp[cur_coef];
-      twiddle_init(pid);
-      is_second_pass = true;
-      std::cout << "FAIL -> FIRST PASS\t" << err << "/" << best_err <<  "\n";
-    }
-    else {
-      p[cur_coef] += dp[cur_coef];
-      dp[cur_coef] *= 0.9;
-      std::cout << "FAIL -> SECOND PASS\t" << err << "/" << best_err << "\n";
-
-      if (++cur_coef >= 3) {
-        cur_coef = 0;
-      }
-
-      if (cur_coef == 0 && dp[0]+dp[1]+dp[2] < tol) {
-        should_tune = false;
-        std::cout << "PID Coefficients Found: ("
-                  << p[0] << ","
-                  << p[1] << ","
-                  << p[2] << ")\n";
-        return;
-      }
-
-      p[cur_coef] += dp[cur_coef];
-      twiddle_init(pid); 
-    }
-
-    reset();
-  }
-  // found error is > best_err
-  else {
-    if (it >= skip) {
-      cur_err += (cte*cte);
-    }
-  }
-}
-
+double min_speed = 25.0, max_speed = 50.0;
 int main() {
   uWS::Hub h;
 
   Vehicle vehicle;
 
+/*
+  double p[] = { 0.15, 0.0001, 2.0 };
+  double dp[] = { 0.1, 0.0001, 1.0 };
+
+  Twiddle twiddle(vehicle.steering_pid);
+  twiddle.Init(p, dp);
+
+  Twiddle twiddle(vehicle.throttle_pid);
+  twiddle.Init(p, dp);
+*/
+
+  // h.onMessage([&vehicle, &twiddle](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
   h.onMessage([&vehicle](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
-    if (length && length > 2 && data[0] == '4' && data[1] == '2')
+    if (length && length > 2 && data[0] == '4' && data[1] == '2' && !skip)
     {
       auto s = hasData(std::string(data).substr(0, length));
       if (s != "") {
@@ -159,16 +73,25 @@ int main() {
           double cte = std::stod(j[1]["cte"].get<std::string>());
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double steering_angle = std::stod(j[1]["steering_angle"].get<std::string>());
+
+          double set_speed = abs(abs(steering_angle / 25.0) - 1.0) * max_speed;
+          if (set_speed < min_speed) { set_speed = min_speed; }
+          vehicle.SetSpeed(set_speed);
           
           vehicle.Update(speed, steering_angle, cte);
+          // bool did_reset = twiddle.Update(cte, std::bind(reset, ws));
+          bool did_reset = false;
 
-          json msgJson;
-          msgJson["steering_angle"] = vehicle.set_steering;
-          msgJson["throttle"] = vehicle.throttle;
-          std::string msg = "42[\"steer\"," + msgJson.dump() + "]";
-          ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-
-          // std::cout << msg << std::endl;
+          if (!did_reset) {
+            json msgJson;
+            msgJson["steering_angle"] = vehicle.set_steering;
+            msgJson["throttle"] = vehicle.throttle;
+            std::string msg = "42[\"steer\"," + msgJson.dump() + "]";
+            ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+          }
+          else {
+            vehicle.reset();
+          }
         }
       } else {
         // Manual driving
@@ -195,6 +118,7 @@ int main() {
 
   h.onConnection([&h](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) {
     std::cout << "Connected!!!" << std::endl;
+    skip = false;
   });
 
   h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) {

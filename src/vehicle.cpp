@@ -1,18 +1,19 @@
 #include "vehicle.h"
 
-using namespace std;
-
 Vehicle::Vehicle() 
   : speed(0.0), steering_angle(0.0), cte(0.0), throttle(0.0),
-    timestep(0), set_speed(30.0), set_steering(0.0)
-{ 
-  steering_pid.Init(0.2, 0.0004, 2.0);
-  throttle_pid.Init(0.3, 0.001, 2.0);
+    timestep(0), set_speed(40.0), set_steering(0.0) {
+  reset();
 }
 
 Vehicle::~Vehicle() {
 
 }
+
+void Vehicle::SetSpeed(double speed) {
+  set_speed = speed;
+}
+
 
 void Vehicle::Update(double speed, double steering_angle, double cte) {
   this->speed = speed;
@@ -51,4 +52,19 @@ void Vehicle::UpdateThrottle() {
   }
 
   this->throttle = throttle_value;
+}
+
+void Vehicle::reset() {
+  speed = 0.0;
+  steering_angle = 0.0;
+  cte = 0.0;
+  throttle = 0.0;
+  timestep = 0;
+  set_speed = 40.0;
+  set_steering = 0.0;
+  
+
+  steering_pid.Init(0.10869, 0.000047, 3.03144);
+//  steering_pid.Init(0.10869, 0.000047, 2.53144);
+  throttle_pid.Init(0.331369, 0.00010729, 1.271);
 }

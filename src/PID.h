@@ -42,6 +42,8 @@ public:
   */
   double TotalError();
 
+private:
+  bool first_run_;
 };
 
 #endif /* PID_H */

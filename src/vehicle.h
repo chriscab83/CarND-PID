@@ -38,6 +38,8 @@ public:
   */
   void Update(double speed, double steering_angle, double cte);
 
+  void SetSpeed(double speed);
+  
   /*
   * Update steering angle with PID
   */
@@ -47,6 +49,9 @@ public:
   * Update throttle setting with PID
   */
   void UpdateThrottle();
+
+  // reset vehicle for next run
+  void reset();
 };
 
 #endif  // VEHICLE_H

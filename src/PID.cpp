@@ -1,9 +1,9 @@
+#include <iostream>
 #include "PID.h"
-#include <limits>
 
 using namespace std;
 
-PID::PID() {}
+PID::PID() : first_run_(true) { }
 
 PID::~PID() {}
 
@@ -12,19 +12,25 @@ void PID::Init(double Kp, double Ki, double Kd) {
   this->Ki = Ki;
   this->Kd = Kd;
 
-  p_error = numeric_limits<double>::max();
+  p_error = 0;
   i_error = 0;
   d_error = 0;
+
+  first_run_ = true;
 }
 
 void PID::UpdateError(double cte) {
-  if (p_error == numeric_limits<double>::max()) {
-    p_error = cte;
+  if (first_run_) { 
+    d_error = 0;
   }
-
-  d_error = cte - p_error;
+  else {
+    d_error = cte - p_error;
+  }
+  
   i_error += cte;
   p_error = cte;
+
+  first_run_ = false;
 }
 
 double PID::TotalError() {
