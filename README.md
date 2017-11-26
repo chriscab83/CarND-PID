@@ -3,6 +3,10 @@ Self-Driving Car Engineer Nanodegree Program
 
 ---
 
+## PID Information
+
+The steering PID controller parameters are set to P = 0.10869, I = 0.000047, and D = 3.03144 which can be seen in line 67 of the file at /src/vehicle.cpp. These parameters were set in two steps, first by manually macro tuning. First the parameters were set to values that made sense and then made changes were made to each variable to correct any visible problems. First by reducing the P variable to decrease oscillation, then by increasing the D variable to reduce overshooting, and finally by manipulating I to decrease any left over error. For the second step, the Twiddle class was utilized to micro tune the PID.
+
 ## Dependencies
 
 * cmake >= 3.5
